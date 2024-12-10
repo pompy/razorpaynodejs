@@ -1,0 +1,73 @@
+import React, { useState } from 'react';
+import { View, Button, StyleSheet } from 'react-native';
+import WebView from 'react-native-webview';
+import axios from 'axios';
+
+const App = () => {
+  const [checkoutUrl, setCheckoutUrl] = useState(null);
+
+  const startPayment = async () => {
+    try {
+      // Create order on the server
+      const { data } = await axios.post('http://localhost:3000/create-order', {
+        amount: 5, // Amount in INR
+        currency: 'INR',
+      });
+
+      const { id, currency, amount,tracking_id } = data;
+
+      // Razorpay hosted checkout URL
+      const options = `https://checkout.razorpay.com/v1/checkout.js?key_id=${process.env.RAZORPAY_KEY_ID}&order_id=${id}&amount=${amount}&currency=${currency}`;
+      setCheckoutUrl(options);
+    } catch (error) {
+      console.error('Error creating Razorpay order:', error.message);
+    }
+  };
+
+  const handlePaymentSuccess = async (response) => {
+    try {
+      await axios.post('http://localhost:3000/verify-payment', response);
+      alert('Payment Verified!');
+    } catch (error) {
+      alert('Payment verification failed');
+    }
+  };
+
+  if (checkoutUrl) {
+    return (
+      <WebView
+        source={{ uri: checkoutUrl }}
+        onNavigationStateChange={(navState) => {
+          const { url } = navState;
+
+          // Parse response from Razorpay success callback
+          if (url.includes('success')) {
+            const params = new URLSearchParams(url.split('?')[1]);
+            const response = {
+              razorpay_order_id: params.get('razorpay_order_id'),
+              razorpay_payment_id: params.get('razorpay_payment_id'),
+              razorpay_signature: params.get('razorpay_signature'),
+            };
+            handlePaymentSuccess(response);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <Button title="Pay with Razorpay" onPress={startPayment} />
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});
+
+export default App;
